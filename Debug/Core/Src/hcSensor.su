@@ -1,0 +1,4 @@
+hcSensor.c:16:6:uDelayTim1	16	static
+hcSensor.c:22:6:HAL_TIM_IC_CaptureCallback	32	static
+hcSensor.c:57:10:triggerMeasureCenter	16	static
+hcSensor.c:70:10:triggerMeasureLeft	16	static
