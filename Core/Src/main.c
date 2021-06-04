@@ -24,6 +24,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "hcSensor.h"
+#include "lcd.h"
+#include <stdio.h>
 
 /* USER CODE END Includes */
 
@@ -34,10 +36,30 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define RST_GPIO_Port	GPIOE
+#define RESET_Pin		GPIO_PIN_5
+#define DC_GPIO_Port	GPIOE
+#define DCC_Pin			GPIO_PIN_4
+#define BL_GPIO_Port	GPIOE
+#define BLL_Pin			GPIO_PIN_3
+#define CE_GPIO_Port	GPIOE
+#define CEE_Pin			GPIO_PIN_2
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
+struct lcdConf lcd;
+
+uint64_t mesCenter;
+uint64_t mesLeft;
+uint64_t mesRight;
+
+uint64_t tmp_mesCenter;
+uint64_t tmp_mesLeft;
+uint64_t tmp_mesRight;
+
+uint8_t begin;
 
 /* USER CODE END PM */
 
@@ -46,6 +68,9 @@ UART_HandleTypeDef hlpuart1;
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart3;
 
+SPI_HandleTypeDef hspi1;
+
+TIM_HandleTypeDef htim1;
 
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
@@ -88,12 +113,25 @@ static void MX_LPUART1_UART_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_USB_OTG_FS_PCD_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_SPI1_Init(void);
 void hcsr04_1(void *argument);
 void hcsr04_2(void *argument);
 void hcsr04_3(void *argument);
 void lcd_buzz(void *argument);
 
 /* USER CODE BEGIN PFP */
+char uart_buf[100];
+int uart_buf_len;
+
+uint8_t row;
+uint8_t col;
+uint8_t j;
+uint8_t lvl;
+
+
+
+
+
 
 /* USER CODE END PFP */
 
@@ -134,9 +172,25 @@ int main(void)
   MX_USART3_UART_Init();
   MX_USB_OTG_FS_PCD_Init();
   MX_TIM1_Init();
+  MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
 
   HAL_TIM_IC_Start_IT(&htim1, TIM_CHANNEL_1);
+
+  lcd.spi = &hspi1;
+  lcd.rst_port = RST_GPIO_Port;
+  lcd.rst_pin = RESET_Pin;
+  lcd.dc_port = DC_GPIO_Port;
+  lcd.dc_pin = DCC_Pin;
+  lcd.bl_port = BL_GPIO_Port;
+  lcd.bl_pin = BLL_Pin;
+  lcd.ce_port = CE_GPIO_Port;
+  lcd.ce_pin = CEE_Pin;
+
+  lcdInit(&lcd);
+
+
+
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -350,6 +404,46 @@ static void MX_USART3_UART_Init(void)
 }
 
 /**
+  * @brief SPI1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI1_Init(void)
+{
+
+  /* USER CODE BEGIN SPI1_Init 0 */
+
+  /* USER CODE END SPI1_Init 0 */
+
+  /* USER CODE BEGIN SPI1_Init 1 */
+
+  /* USER CODE END SPI1_Init 1 */
+  /* SPI1 parameter configuration*/
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi1.Init.CRCPolynomial = 7;
+  hspi1.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
+  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI1_Init 2 */
+
+  /* USER CODE END SPI1_Init 2 */
+
+}
+
+/**
   * @brief TIM1 Initialization Function
   * @param None
   * @retval None
@@ -443,15 +537,18 @@ static void MX_GPIO_Init(void)
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
-  __HAL_RCC_GPIOE_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOG_CLK_ENABLE();
   HAL_PWREx_EnableVddIO2();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOE, CE_Pin|BL_Pin|DC_Pin|RST_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOF, Trig1_Pin|Trig2_Pin|Trig3_Pin, GPIO_PIN_RESET);
@@ -461,6 +558,13 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(USB_PowerSwitchOn_GPIO_Port, USB_PowerSwitchOn_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pins : CE_Pin BL_Pin DC_Pin RST_Pin */
+  GPIO_InitStruct.Pin = CE_Pin|BL_Pin|DC_Pin|RST_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -514,8 +618,13 @@ void hcsr04_1(void *argument)
   /* Infinite loop */
   for(;;)
   {
-	triggerMeasureCenter();
-    osDelay(100);
+	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_7);
+	tmp_mesCenter = triggerMeasureCenter();
+	if(((mesCenter != 0) && (mesCenter < tmp_mesCenter)) || (mesCenter == 0))
+	{
+		mesCenter = tmp_mesCenter;
+	}
+    osDelay(10);
   }
   /* USER CODE END 5 */
 }
@@ -534,8 +643,12 @@ void hcsr04_2(void *argument)
   for(;;)
   {
 	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
-	triggerMeasureLeft();
-    osDelay(100);
+	tmp_mesLeft = triggerMeasureLeft();
+	if(((mesLeft != 0) && (mesLeft > tmp_mesLeft)) || (mesLeft == 0))
+	{
+		mesLeft = tmp_mesLeft;
+	}
+    osDelay(10);
   }
   /* USER CODE END hcsr04_2 */
 }
@@ -553,8 +666,14 @@ void hcsr04_3(void *argument)
   /* Infinite loop */
   for(;;)
   {
-	triggerMeasureRight();
-    osDelay(1);
+	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
+	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_7);
+	tmp_mesRight = triggerMeasureRight();
+	if(((mesRight != 0) && (mesRight > tmp_mesRight)) || (mesRight == 0))
+	{
+		mesRight = tmp_mesRight;
+	}
+    osDelay(10);
   }
   /* USER CODE END hcsr04_3 */
 }
@@ -572,7 +691,19 @@ void lcd_buzz(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+	if(begin == 0)
+	{
+		lcdWelcome(lcd);
+		begin = 1;
+		osDelay(4000);
+	}
+
+	display_driver(mesLeft, mesCenter, mesRight, lcd);
+
+    mesLeft = 0;
+    mesCenter = 0;
+    mesRight = 0;
+    osDelay(100);
   }
   /* USER CODE END lcd_buzz */
 }

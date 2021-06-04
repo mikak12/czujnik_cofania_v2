@@ -44,8 +44,6 @@ uint8_t waitOnFallingEdge;
 #define PIN_RIGHT	GPIO_PIN_7
 #define PORT_RIGHT	GPIOF
 
-
-
 struct HC_SR04
 {
 
@@ -55,6 +53,7 @@ void uDelayTim1(uint64_t uSec);
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim);
 uint64_t triggerMeasureCenter(void);
 uint64_t triggerMeasureLeft(void);
+uint64_t triggerMeasureRight(void);
 
 #ifdef __cplusplus
 }
